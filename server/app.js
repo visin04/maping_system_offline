@@ -37,27 +37,36 @@ app.get('/api/search', async (req, res) => {
   if (q.length < 2) return res.json([]);
 
   try {
+    // google_address.name is a full "City, State, India" string, so a bare city
+    // query like "Bangalore" scores low against it on trigram similarity alone
+    // (diluted by length) even though it's an exact match on the city itself.
+    // Rank against admin (the bare city name) too, plus a bonus for rows in the
+    // canonical "<City>, <State>, ..." format so the actual city entry wins over
+    // same-admin noise (a landmark address, or junk like "No Name Chennai").
     const { rows } = await pool.query(
       `(
          SELECT name, address, admin AS city, province AS state,
                 NULL AS category, latitude, longitude,
-                similarity(name, $1) AS score
+                similarity(name, $1) AS score,
+                GREATEST(similarity(name, $1), similarity(admin, $1)) + 0.1
+                  + (CASE WHEN name ILIKE admin || ', %' THEN 0.5 ELSE 0 END) AS rank_score
          FROM google_address
-         WHERE name ILIKE '%' || $1 || '%' OR address ILIKE '%' || $1 || '%'
-         ORDER BY score DESC
+         WHERE name ILIKE '%' || $1 || '%' OR address ILIKE '%' || $1 || '%' OR admin ILIKE '%' || $1 || '%'
+         ORDER BY rank_score DESC
          LIMIT 10
        )
        UNION ALL
        (
          SELECT name, NULL AS address, NULL AS city, NULL AS state,
                 category, latitude, longitude,
-                similarity(name, $1) AS score
+                similarity(name, $1) AS score,
+                similarity(name, $1) AS rank_score
          FROM poi
          WHERE name ILIKE '%' || $1 || '%'
          ORDER BY score DESC
          LIMIT 10
        )
-       ORDER BY score DESC
+       ORDER BY rank_score DESC
        LIMIT 10`,
       [q]
     );

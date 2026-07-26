@@ -6,3 +6,5 @@ server/india_map_dump.sql
 india-map-data.zip
 *.log
 .env
+.claude/
+screenshots/
