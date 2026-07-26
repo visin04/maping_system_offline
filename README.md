@@ -122,4 +122,6 @@ Open `http://localhost:3000`.
 
 `india-map-data.zip` (map tiles, routing graph, fonts, DB dump — excluded from
 git because several files exceed GitHub's 100MB limit) is shared separately
-via Google Drive. Ask the repo owner for the link.
+via Google Drive:
+
+https://drive.google.com/file/d/18Yl75be0QoTStY37a8w6FS1Fd_PsCmAV/view?usp=sharing
