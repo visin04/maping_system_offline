@@ -2,5 +2,7 @@ server/node_modules/
 server/mld/
 server/india.mbtiles
 server/fonts/
+server/india_map_dump.sql
+india-map-data.zip
 *.log
 .env
