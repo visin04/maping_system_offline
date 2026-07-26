@@ -1,0 +1,25 @@
+{
+  "options": {
+    "paths": {
+      "root": ".",
+      "styles": "./styles",
+      "fonts": "./fonts"
+    },
+    "serveAllFonts": true,
+    "serveAllStyles": true
+  },
+
+  "data": {
+    "india": {
+      "mbtiles": "./india.mbtiles"
+    }
+  },
+
+  "styles": {
+    "basic": {
+      "style": "basic/style.json"
+    }
+  },
+
+  "port": 55333
+}

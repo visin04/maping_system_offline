@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>India Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <style>
+    html, body { margin: 0; height: 100%; font-family: Arial, Helvetica, sans-serif; }
+    #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+
+    #panel {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      width: 340px;
+      max-width: calc(100% - 24px);
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      z-index: 10;
+      overflow: hidden;
+      max-height: calc(100% - 24px);
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* --- single search mode --- */
+    #searchRow { display: flex; align-items: center; padding: 10px 12px; }
+    #searchRow input {
+      flex: 1;
+      border: none;
+      outline: none;
+      font-size: 15px;
+      padding: 6px 4px;
+    }
+    #dirToggleBtn {
+      border: none;
+      background: none;
+      color: #1a73e8;
+      font-size: 13px;
+      cursor: pointer;
+      padding: 6px;
+      flex-shrink: 0;
+    }
+
+    /* --- directions mode --- */
+    #directionsBox { display: none; }
+    .row { display: flex; align-items: center; padding: 8px 12px; border-bottom: 1px solid #eee; }
+    .row input {
+      flex: 1;
+      border: none;
+      outline: none;
+      font-size: 14px;
+      padding: 6px 4px;
+    }
+    .row .dot { width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; flex-shrink: 0; }
+    .dot.from { background: #1a73e8; }
+    .dot.to { background: #ea4335; }
+    .dot.stop { background: #673ab7; }
+    .locate-btn {
+      border: none;
+      background: none;
+      cursor: pointer;
+      font-size: 15px;
+      padding: 4px 6px;
+      color: #1a73e8;
+      flex-shrink: 0;
+    }
+    .remove-stop-btn {
+      border: none;
+      background: none;
+      cursor: pointer;
+      font-size: 16px;
+      padding: 4px 6px;
+      color: #5f6368;
+      flex-shrink: 0;
+    }
+    #addStopBtn {
+      border: none;
+      background: none;
+      color: #1a73e8;
+      font-size: 13px;
+      cursor: pointer;
+      padding: 8px 12px;
+      text-align: left;
+      width: 100%;
+      border-bottom: 1px solid #eee;
+    }
+
+    /* mode tabs, like Google Maps' car/walk/bike icons */
+    #modeTabs { display: flex; padding: 6px 12px 0; gap: 6px; border-bottom: 1px solid #eee; }
+    .mode-btn {
+      flex: 1;
+      border: none;
+      background: none;
+      padding: 8px 4px;
+      font-size: 18px;
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      color: #5f6368;
+    }
+    .mode-btn.active { color: #1a73e8; border-bottom-color: #1a73e8; }
+    .mode-btn:disabled { color: #ccc; cursor: not-allowed; }
+
+    #suggestions {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+    #suggestions li {
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 13px;
+      border-bottom: 1px solid #f0f0f0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #suggestions li:hover { background: #f5f5f5; }
+    #suggestions .place-name { font-weight: 600; color: #202124; }
+    #suggestions .place-sub { color: #5f6368; font-size: 12px; }
+    #suggestions li.current-location .place-name { color: #1a73e8; }
+    #suggestions li.recent-place .place-name::before { content: "\1F551  "; }
+
+    #directionsBtn, #clearBtn, #backBtn {
+      border: none;
+      background: #1a73e8;
+      color: #fff;
+      padding: 8px 12px;
+      font-size: 13px;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    #clearBtn { background: #5f6368; }
+    #backBtn { background: none; color: #5f6368; font-size: 18px; padding: 6px 10px; }
+
+    #routeOptions {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: none;
+      border-bottom: 1px solid #eee;
+    }
+    #routeOptions li {
+      padding: 10px 12px;
+      cursor: pointer;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 13px;
+    }
+    #routeOptions li:hover { background: #f5f5f5; }
+    #routeOptions li.selected { background: #e8f0fe; border-left: 3px solid #1a73e8; }
+    #routeOptions .opt-duration { font-weight: 600; font-size: 15px; color: #202124; }
+    #routeOptions li.selected .opt-duration { color: #1a73e8; }
+    #routeOptions .opt-dist { color: #5f6368; font-size: 12px; }
+
+    #routeInfo {
+      padding: 10px 12px;
+      font-size: 13px;
+      background: #e8f0fe;
+      display: none;
+      border-bottom: 1px solid #eee;
+    }
+    #routeInfo b { color: #1a73e8; font-size: 15px; }
+
+    #stepsList {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      overflow-y: auto;
+      display: none;
+    }
+    #stepsList li {
+      display: flex;
+      gap: 10px;
+      padding: 10px 12px;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 13px;
+      color: #202124;
+    }
+    #stepsList .step-dist {
+      color: #5f6368;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .maplibregl-popup-content { font-size: 13px; }
+
+    #locateControl, #tilt3dBtn {
+      position: absolute;
+      right: 10px;
+      z-index: 10;
+      background: #fff;
+      border: none;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+      font-size: 18px;
+      cursor: pointer;
+    }
+    #locateControl { bottom: 24px; }
+    #tilt3dBtn { bottom: 72px; font-size: 13px; font-weight: 700; color: #5f6368; }
+  </style>
+</head>
+<body>
+<div id="map"></div>
+<button id="locateControl" title="Show my location">&#128205;</button>
+<button id="tilt3dBtn" title="Toggle 3D view">3D</button>
+
+<div id="panel">
+  <div id="searchRow">
+    <input id="placeInput" placeholder="Search a place in India" autocomplete="off" />
+    <button id="dirToggleBtn">Directions</button>
+  </div>
+
+  <div id="directionsBox">
+    <div class="row">
+      <button id="backBtn">&larr;</button>
+      <span style="flex:1"></span>
+    </div>
+    <div class="row">
+      <span class="dot from"></span>
+      <input id="fromInput" placeholder="Choose starting point" autocomplete="off" />
+      <button class="locate-btn" id="useMyLocationBtn" title="Use my current location">&#128205;</button>
+    </div>
+    <div class="row">
+      <span class="dot to"></span>
+      <input id="toInput" placeholder="Choose destination" autocomplete="off" />
+    </div>
+    <div id="stopsContainer"></div>
+    <button id="addStopBtn">+ Add stop</button>
+    <div id="modeTabs">
+      <button class="mode-btn active" data-mode="driving" title="Car">&#128663;</button>
+      <button class="mode-btn" data-mode="cycling" title="Bicycle">&#128692;</button>
+      <button class="mode-btn" data-mode="walking" title="Walking">&#128694;</button>
+    </div>
+    <div class="row" style="justify-content: space-between; border-bottom: none;">
+      <button id="directionsBtn">Get directions</button>
+      <button id="clearBtn">Clear</button>
+    </div>
+  </div>
+
+  <ul id="suggestions"></ul>
+  <ul id="routeOptions"></ul>
+  <div id="routeInfo"></div>
+  <ul id="stepsList"></ul>
+</div>
+
+<script>
+const TILE_HOST = 'http://localhost:8080';
+
+const map = new maplibregl.Map({
+  container: 'map',
+  style: `${TILE_HOST}/styles/basic/style.json`,
+  center: [78.9629, 22.5937],
+  zoom: 4.2
+});
+map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
+
+// 3D toggle: tilts the camera and lights up the buildings-3d layer already baked
+// into the style (real building heights, visible from zoom 15+). Drag with the
+// right mouse button (or ctrl+drag) to rotate/tilt freely at any time.
+document.getElementById('tilt3dBtn').addEventListener('click', () => {
+  const is3D = map.getPitch() > 0;
+  if (is3D) {
+    map.easeTo({ pitch: 0, bearing: 0, duration: 500 });
+  } else {
+    map.easeTo({ pitch: 60, duration: 500 });
+  }
+});
+
+let fromPoint = null; // {lat, lng, label}
+let toPoint = null;
+let fromMarker = null;
+let toMarker = null;
+let placeMarker = null;
+let myLocationMarker = null;
+let myLocation = null; // {lat, lng} from browser geolocation, cached once granted
+let activeField = 'from'; // 'from' | 'to' | 'place'
+let directionsMode = false;
+let travelMode = 'driving';
+
+const placeInput = document.getElementById('placeInput');
+const fromInput = document.getElementById('fromInput');
+const toInput = document.getElementById('toInput');
+const suggestionsEl = document.getElementById('suggestions');
+const routeOptionsEl = document.getElementById('routeOptions');
+const routeInfoEl = document.getElementById('routeInfo');
+const stepsListEl = document.getElementById('stepsList');
+
+let currentRoutes = [];
+let selectedRouteIndex = 0;
+const directionsBox = document.getElementById('directionsBox');
+const searchRow = document.getElementById('searchRow');
+const stopsContainer = document.getElementById('stopsContainer');
+
+// Multi-stop waypoints, in trip order. Each: { id, point, marker, inputEl }
+let stopRows = [];
+let stopIdCounter = 0;
+
+function addStopRow() {
+  const id = stopIdCounter++;
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.innerHTML = `
+    <span class="dot stop"></span>
+    <input placeholder="Add stop" autocomplete="off" />
+    <button class="remove-stop-btn" title="Remove stop">&times;</button>
+  `;
+  const input = row.querySelector('input');
+  const removeBtn = row.querySelector('.remove-stop-btn');
+  const field = `stop-${id}`;
+
+  const entry = { id, point: null, marker: null, inputEl: input };
+  stopRows.push(entry);
+
+  input.addEventListener('input', e => onInputChange(field, e.target.value));
+  input.addEventListener('focus', () => { activeField = field; search(input.value, field); });
+  removeBtn.addEventListener('click', () => {
+    if (entry.marker) entry.marker.remove();
+    stopRows = stopRows.filter(s => s.id !== id);
+    row.remove();
+    maybeDrawRoute();
+  });
+
+  stopsContainer.appendChild(row);
+  return field;
+}
+
+function clearStops() {
+  stopRows.forEach(s => { if (s.marker) s.marker.remove(); });
+  stopRows = [];
+  stopsContainer.innerHTML = '';
+}
+
+document.getElementById('addStopBtn').addEventListener('click', () => {
+  const field = addStopRow();
+  stopRows.find(s => `stop-${s.id}` === field).inputEl.focus();
+});
+
+function setMarker(kind, point) {
+  if (kind === 'place') {
+    if (placeMarker) placeMarker.remove();
+    placeMarker = new maplibregl.Marker({ color: '#ea4335' })
+      .setLngLat([point.lng, point.lat])
+      .setPopup(new maplibregl.Popup({ offset: 20 }).setText(point.label))
+      .addTo(map);
+    return;
+  }
+  const color = kind === 'from' ? '#1a73e8' : '#ea4335';
+  const existing = kind === 'from' ? fromMarker : toMarker;
+  if (existing) existing.remove();
+
+  const marker = new maplibregl.Marker({ color })
+    .setLngLat([point.lng, point.lat])
+    .setPopup(new maplibregl.Popup({ offset: 20 }).setText(point.label))
+    .addTo(map);
+
+  if (kind === 'from') fromMarker = marker;
+  else toMarker = marker;
+}
+
+// Turn a coordinate into a real place name using the nearest known address,
+// falling back to raw coordinates if nothing nearby is known.
+async function reverseGeocode(lat, lng) {
+  try {
+    const res = await fetch(`/api/reverse?lat=${lat}&lng=${lng}`);
+    const place = await res.json();
+    if (place && place.name) return place.name;
+  } catch {}
+  return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+}
+
+// Fire-and-forget save so the place shows up under "recent" next time
+function saveRecent(label, lat, lng) {
+  fetch('/api/recent', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ label, lat, lng })
+  }).catch(() => {});
+}
+
+function clearRoute() {
+  routeInfoEl.style.display = 'none';
+  stepsListEl.style.display = 'none';
+  stepsListEl.innerHTML = '';
+  routeOptionsEl.style.display = 'none';
+  routeOptionsEl.innerHTML = '';
+  currentRoutes = [];
+  selectedRouteIndex = 0;
+  if (map.getLayer('route-line')) map.removeLayer('route-line');
+  if (map.getSource('route')) map.removeSource('route');
+}
+
+// --- Geolocation: browser asks the user for permission, nothing is tracked server-side ---
+// enableHighAccuracy is deliberately off: it asks for GPS-grade positioning, which desktops
+// without GPS hardware often can't provide and will fail outright instead of falling back to
+// the WiFi/IP-based location most desktop OSes actually support.
+function getCurrentLocation() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('Geolocation is not supported by this browser'));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        myLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        resolve(myLocation);
+      },
+      err => reject(new Error(geolocationErrorMessage(err))),
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+    );
+  });
+}
+
+function geolocationErrorMessage(err) {
+  switch (err.code) {
+    case err.PERMISSION_DENIED:
+      return 'Location access was denied. Allow it in your browser\'s site settings and try again.';
+    case err.POSITION_UNAVAILABLE:
+      return 'Your device/OS could not determine a location (no GPS or network location service available). Try searching for your address instead.';
+    case err.TIMEOUT:
+      return 'Location request timed out. Try again, or search for your address instead.';
+    default:
+      return err.message || 'Unknown error';
+  }
+}
+
+document.getElementById('locateControl').addEventListener('click', async () => {
+  try {
+    const loc = await getCurrentLocation();
+    if (myLocationMarker) myLocationMarker.remove();
+    myLocationMarker = new maplibregl.Marker({ color: '#4285f4' })
+      .setLngLat([loc.lng, loc.lat])
+      .addTo(map);
+    map.flyTo({ center: [loc.lng, loc.lat], zoom: 14 });
+  } catch (err) {
+    alert('Could not get your location: ' + err.message);
+  }
+});
+
+document.getElementById('useMyLocationBtn').addEventListener('click', async () => {
+  try {
+    const loc = await getCurrentLocation();
+    const point = { lat: loc.lat, lng: loc.lng, label: 'Your location' };
+    fromPoint = point;
+    fromInput.value = point.label;
+    setMarker('from', point);
+    map.flyTo({ center: [loc.lng, loc.lat], zoom: 13 });
+    maybeDrawRoute();
+  } catch (err) {
+    alert('Could not get your location: ' + err.message);
+  }
+});
+
+function setStopMarker(entry, point) {
+  if (entry.marker) entry.marker.remove();
+  entry.marker = new maplibregl.Marker({ color: '#673ab7' })
+    .setLngLat([point.lng, point.lat])
+    .setPopup(new maplibregl.Popup({ offset: 20 }).setText(point.label))
+    .addTo(map);
+}
+
+// Single entry point for "the user picked this point for this field" — used by
+// search-result clicks, the "Your location" option, and map clicks alike.
+function selectPoint(field, point, { flyZoom = 12, remember = true } = {}) {
+  if (remember && point.label !== 'Your location') {
+    saveRecent(point.label, point.lat, point.lng);
+  }
+
+  if (field === 'place') {
+    placeInput.value = point.label;
+    setMarker('place', point);
+  } else if (field === 'to') {
+    toPoint = point;
+    toInput.value = point.label;
+    setMarker('to', point);
+  } else if (field.startsWith('stop-')) {
+    const entry = stopRows.find(s => `stop-${s.id}` === field);
+    if (entry) {
+      entry.point = point;
+      entry.inputEl.value = point.label;
+      setStopMarker(entry, point);
+    }
+  } else {
+    fromPoint = point;
+    fromInput.value = point.label;
+    setMarker('from', point);
+  }
+
+  map.flyTo({ center: [point.lng, point.lat], zoom: flyZoom });
+  if (field !== 'place') maybeDrawRoute();
+}
+
+function renderCurrentLocationOption(field) {
+  const li = document.createElement('li');
+  li.className = 'current-location';
+  li.innerHTML = `<span>&#128205;</span><div><div class="place-name">Your location</div><div class="place-sub">Use device GPS</div></div>`;
+  li.addEventListener('click', async () => {
+    try {
+      const loc = await getCurrentLocation();
+      suggestionsEl.innerHTML = '';
+      selectPoint(field, { lat: loc.lat, lng: loc.lng, label: 'Your location' }, { flyZoom: 13 });
+    } catch (err) {
+      alert('Could not get your location: ' + err.message);
+    }
+  });
+  suggestionsEl.appendChild(li);
+}
+
+function renderResultOption(field, point, subtitle, isRecent) {
+  const li = document.createElement('li');
+  if (isRecent) li.className = 'recent-place';
+  li.innerHTML = `<div><div class="place-name">${point.label}</div>
+                  <div class="place-sub">${subtitle || ''}</div></div>`;
+  li.addEventListener('click', () => {
+    suggestionsEl.innerHTML = '';
+    selectPoint(field, point, { flyZoom: isRecent ? 13 : 12, remember: !isRecent });
+  });
+  suggestionsEl.appendChild(li);
+}
+
+function formatCategory(category) {
+  return category.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+async function search(query, field) {
+  suggestionsEl.innerHTML = '';
+  renderCurrentLocationOption(field);
+
+  if (!query || query.length < 2) {
+    // Nothing typed yet: offer recently picked places, like Google Maps' history
+    try {
+      const res = await fetch('/api/recent');
+      const recents = await res.json();
+      recents.forEach(r => {
+        const point = { lat: Number(r.latitude), lng: Number(r.longitude), label: r.label };
+        renderResultOption(field, point, 'Recent', true);
+      });
+    } catch {}
+    return;
+  }
+
+  const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+  const results = await res.json();
+
+  results.forEach(r => {
+    const point = { lat: Number(r.latitude), lng: Number(r.longitude), label: r.name || r.address };
+    const subtitle = r.category
+      ? formatCategory(r.category)
+      : [r.city, r.state].filter(Boolean).join(', ');
+    renderResultOption(field, point, subtitle, false);
+  });
+}
+
+let debounceTimer = null;
+function onInputChange(field, value) {
+  activeField = field;
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => search(value, field), 250);
+}
+
+placeInput.addEventListener('input', e => onInputChange('place', e.target.value));
+placeInput.addEventListener('focus', () => { activeField = 'place'; search(placeInput.value, 'place'); });
+fromInput.addEventListener('input', e => onInputChange('from', e.target.value));
+toInput.addEventListener('input', e => onInputChange('to', e.target.value));
+fromInput.addEventListener('focus', () => { activeField = 'from'; search(fromInput.value, 'from'); });
+toInput.addEventListener('focus', () => { activeField = 'to'; search(toInput.value, 'to'); });
+
+function enterDirectionsMode() {
+  directionsMode = true;
+  searchRow.style.display = 'none';
+  directionsBox.style.display = 'block';
+  suggestionsEl.innerHTML = '';
+
+  if (placeMarker) { placeMarker.remove(); placeMarker = null; }
+
+  if (placeInput.value && !fromPoint) {
+    fromInput.value = placeInput.value;
+  }
+  activeField = fromPoint ? 'to' : 'from';
+  (fromPoint ? toInput : fromInput).focus();
+}
+
+function exitDirectionsMode() {
+  directionsMode = false;
+  searchRow.style.display = 'flex';
+  directionsBox.style.display = 'none';
+  suggestionsEl.innerHTML = '';
+}
+
+document.getElementById('dirToggleBtn').addEventListener('click', enterDirectionsMode);
+document.getElementById('backBtn').addEventListener('click', exitDirectionsMode);
+
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (btn.disabled) return;
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    travelMode = btn.dataset.mode;
+    maybeDrawRoute();
+  });
+});
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+  fromPoint = null;
+  toPoint = null;
+  fromInput.value = '';
+  toInput.value = '';
+  suggestionsEl.innerHTML = '';
+  clearRoute();
+  clearStops();
+  if (fromMarker) { fromMarker.remove(); fromMarker = null; }
+  if (toMarker) { toMarker.remove(); toMarker = null; }
+});
+
+document.getElementById('directionsBtn').addEventListener('click', () => {
+  if (!fromPoint || !toPoint) {
+    alert('Pick both a starting point and a destination from the suggestions.');
+    return;
+  }
+  drawRoute();
+});
+
+function maybeDrawRoute() {
+  if (fromPoint && toPoint) drawRoute();
+}
+
+function formatDistance(meters) {
+  return meters < 1000 ? `${Math.round(meters)} m` : `${(meters / 1000).toFixed(1)} km`;
+}
+
+function stepInstruction(step) {
+  const m = step.maneuver;
+  const road = step.name ? ` onto ${step.name}` : '';
+  const type = m.type;
+  const modifier = m.modifier ? ` ${m.modifier}` : '';
+
+  if (type === 'depart') return `Head${modifier || ''}${road}`;
+  if (type === 'arrive') return m.modifier === 'left' || m.modifier === 'right'
+    ? `Arrive at your destination, on the ${m.modifier}`
+    : 'Arrive at your destination';
+  if (type === 'roundabout' || type === 'rotary') return `Enter the roundabout and take exit ${m.exit || ''}${road}`;
+  if (type === 'turn') return `Turn${modifier}${road}`;
+  if (type === 'merge') return `Merge${modifier}${road}`;
+  if (type === 'fork') return `Keep${modifier}${road}`;
+  if (type === 'continue') return `Continue${modifier}${road}`;
+  if (type === 'on ramp') return `Take the ramp${modifier}${road}`;
+  if (type === 'off ramp') return `Take the exit${modifier}${road}`;
+  return `Continue${road}`;
+}
+
+function formatDuration(seconds) {
+  const mins = Math.round(seconds / 60);
+  const hrs = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  return hrs > 0 ? `${hrs} hr ${remMins} min` : `${mins} min`;
+}
+
+async function drawRoute() {
+  const waypoints = stopRows
+    .filter(s => s.point)
+    .map(s => ({ lat: s.point.lat, lng: s.point.lng }));
+
+  let url = `/api/route?fromLat=${fromPoint.lat}&fromLng=${fromPoint.lng}&toLat=${toPoint.lat}&toLng=${toPoint.lng}&mode=${travelMode}`;
+  if (waypoints.length) {
+    url += `&waypoints=${encodeURIComponent(JSON.stringify(waypoints))}`;
+  }
+  const res = await fetch(url);
+  const data = await res.json();
+
+  if (data.code !== 'Ok' || !data.routes || !data.routes.length) {
+    routeOptionsEl.style.display = 'none';
+    routeInfoEl.style.display = 'block';
+    stepsListEl.style.display = 'none';
+    routeInfoEl.textContent = data.message || 'No route found for this travel mode.';
+    return;
+  }
+
+  // OSRM's alternatives are already sorted fastest-first; keep that order like Google Maps does
+  currentRoutes = data.routes;
+  selectedRouteIndex = 0;
+  renderRouteOptions();
+  renderSelectedRoute();
+}
+
+function renderRouteOptions() {
+  routeOptionsEl.innerHTML = '';
+
+  if (currentRoutes.length < 2) {
+    routeOptionsEl.style.display = 'none';
+    return;
+  }
+
+  currentRoutes.forEach((route, idx) => {
+    const li = document.createElement('li');
+    li.className = idx === selectedRouteIndex ? 'selected' : '';
+    const km = (route.distance / 1000).toFixed(1);
+    const label = idx === 0 ? 'Fastest route' : `Alternative ${idx}`;
+    li.innerHTML = `<div class="opt-duration">${formatDuration(route.duration)}</div>
+                    <div class="opt-dist">${km} km &middot; ${label}</div>`;
+    li.addEventListener('click', () => {
+      selectedRouteIndex = idx;
+      renderRouteOptions();
+      renderSelectedRoute();
+    });
+    routeOptionsEl.appendChild(li);
+  });
+
+  routeOptionsEl.style.display = 'block';
+}
+
+function renderSelectedRoute() {
+  const route = currentRoutes[selectedRouteIndex];
+  const geojson = { type: 'Feature', geometry: route.geometry };
+
+  if (map.getSource('route')) {
+    map.getSource('route').setData(geojson);
+  } else {
+    map.addSource('route', { type: 'geojson', data: geojson });
+    map.addLayer({
+      id: 'route-line',
+      type: 'line',
+      source: 'route',
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': '#1a73e8', 'line-width': 5, 'line-opacity': 0.8 }
+    });
+  }
+
+  const km = (route.distance / 1000).toFixed(1);
+  const routeLabel = currentRoutes.length > 1
+    ? (selectedRouteIndex === 0 ? 'fastest route' : `alternative ${selectedRouteIndex}`)
+    : 'fastest route';
+  routeInfoEl.style.display = 'block';
+  routeInfoEl.innerHTML = `<b>${formatDuration(route.duration)}</b><br>${km} km via ${routeLabel}`;
+
+  stepsListEl.innerHTML = '';
+  const steps = (route.legs || []).flatMap(leg => leg.steps || []);
+  steps.forEach(step => {
+    const li = document.createElement('li');
+    li.innerHTML = `<div>${stepInstruction(step)}</div>`;
+    if (step.distance > 0) {
+      const distEl = document.createElement('div');
+      distEl.className = 'step-dist';
+      distEl.textContent = formatDistance(step.distance);
+      li.appendChild(distEl);
+    }
+    stepsListEl.appendChild(li);
+  });
+  stepsListEl.style.display = steps.length ? 'block' : 'none';
+
+  const bounds = new maplibregl.LngLatBounds();
+  route.geometry.coordinates.forEach(c => bounds.extend(c));
+  map.fitBounds(bounds, { padding: 60 });
+}
+
+// Click on the map to drop a pin: in directions mode fills from/to/a stop, otherwise acts as a place pin
+map.on('click', async (e) => {
+  const { lat, lng } = e.lngLat;
+  const label = await reverseGeocode(lat, lng);
+  const point = { lat, lng, label };
+
+  if (!directionsMode) {
+    selectPoint('place', point);
+    return;
+  }
+
+  const field = activeField === 'to' && !toPoint ? 'to' : (!fromPoint ? 'from' : (activeField === 'place' ? 'from' : activeField));
+  selectPoint(field, point);
+});
+
+// Check which travel modes have routing data ready and disable the rest
+fetch('/api/modes').then(r => r.json()).then(modes => {
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    if (!modes[btn.dataset.mode]) {
+      btn.disabled = true;
+      btn.title += ' (building...)';
+    }
+  });
+}).catch(() => {});
+
+// Firefox (and some other browsers) restore typed form field VALUES on reload/back-forward
+// even though all our JS state (fromPoint/toPoint/markers) resets to empty. Without this, the
+// boxes can show old text with no selection actually behind it. Force the UI back in sync with
+// the real (empty) state on every load, including bfcache restores.
+function resetFormState() {
+  fromPoint = null;
+  toPoint = null;
+  placeInput.value = '';
+  fromInput.value = '';
+  toInput.value = '';
+  suggestionsEl.innerHTML = '';
+  clearRoute();
+  clearStops();
+  if (fromMarker) { fromMarker.remove(); fromMarker = null; }
+  if (toMarker) { toMarker.remove(); toMarker = null; }
+  if (placeMarker) { placeMarker.remove(); placeMarker = null; }
+}
+window.addEventListener('pageshow', resetFormState);
+</script>
+</body>
+</html>

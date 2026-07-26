@@ -1,0 +1,6 @@
+server/node_modules/
+server/mld/
+server/india.mbtiles
+server/fonts/
+*.log
+.env
